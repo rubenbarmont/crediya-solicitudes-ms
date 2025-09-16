@@ -4,22 +4,17 @@ import co.com.bancolombia.model.loanapplication.gateways.LoanApplicationPersiste
 import co.com.bancolombia.model.loanapplication.model.LoanApplicationModel;
 import co.com.bancolombia.model.loanapplication.model.LoanTypeModel;
 import co.com.bancolombia.model.loanapplication.model.StateModel;
-import co.com.bancolombia.model.loanapplication.model.page.PageLoanApplicationModel;
 import co.com.bancolombia.r2dbc.health.R2dbcSafeExecutor;
 import co.com.bancolombia.r2dbc.mapper.LoanApplicationMapperR2dbc;
 import co.com.bancolombia.r2dbc.mapper.LoanTypeMapperR2dbc;
 import co.com.bancolombia.r2dbc.mapper.StateMapperR2dbc;
 import co.com.bancolombia.r2dbc.repository.LoanApplicationRepository;
-import co.com.bancolombia.r2dbc.repository.LoanApplicationRepositoryCustom;
 import co.com.bancolombia.r2dbc.repository.LoanTypeRepository;
 import co.com.bancolombia.r2dbc.repository.StateRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
-import java.util.List;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -27,11 +22,12 @@ import java.util.List;
 public class LoanApplicationAdapterR2dbc implements LoanApplicationPersistencePort {
 
     private final LoanApplicationRepository loanApplicationRepository;
-    private final LoanApplicationRepositoryCustom loanApplicationRepositoryCustom;
+    private final LoanTypeRepository loanTypeRepository;
+    private final StateRepository stateRepository;
     private final LoanApplicationMapperR2dbc loanApplicationMapperR2dbc;
+    private final LoanTypeMapperR2dbc loanTypeMapperR2dbc;
+    private final StateMapperR2dbc stateMapperR2dbc;
     private final R2dbcSafeExecutor r2dbcSafeExecutor;
-    private final LoanTypeAdapterR2dbc loanTypeAdapterR2dbc;
-    private final StateAdapterR2dbc stateAdapterR2dbc;
 
     @Override
     public Mono<LoanApplicationModel> saveLoanApplication(LoanApplicationModel loanApplicationModel) {
@@ -41,8 +37,8 @@ public class LoanApplicationAdapterR2dbc implements LoanApplicationPersistencePo
                         .map(loanApplicationMapperR2dbc::toModelLoanApplication)
                         .flatMap(saved ->
                                 Mono.zip(
-                                                loanTypeAdapterR2dbc.findLoanTypeById(saved.getLoanType().getIdLoanType()),
-                                                stateAdapterR2dbc.findStateById(saved.getState().getIdState())
+                                                findLoanTypeById(saved.getLoanType().getIdLoanType()),
+                                                findStateByName(saved.getState().getName() != null ? saved.getState().getName() : "PENDING")
                                         )
                                         .map(tuple -> {
                                             saved.setLoanType(tuple.getT1());
@@ -56,29 +52,25 @@ public class LoanApplicationAdapterR2dbc implements LoanApplicationPersistencePo
     }
 
     @Override
-    public Mono<LoanApplicationModel> findLoanApplicationById(Long idLoanApplication) {
+    public Mono<LoanTypeModel> findLoanTypeById(Long idLoanType) {
         return r2dbcSafeExecutor.executeMono(() ->
-                loanApplicationRepository.findById(idLoanApplication)
-                        .doOnSubscribe(sub -> log.info("Finding loan application with id loan application"))
-                        .map(loanApplicationMapperR2dbc::toModelLoanApplication)
-                        .doOnError(e -> log.error("Error finding loan application by id: {}", e.getMessage()))
+                loanTypeRepository.findById(idLoanType)
+                        .doOnSubscribe(sub -> log.info("Checking find of id: {}", idLoanType))
+                        .map(loanTypeMapperR2dbc::toModelLoanType)
+                        .doOnSuccess(found -> log.info("The loan type exists: {}", found))
+                        .doOnError(e -> log.error("Error finding loan type by id {}: {}", idLoanType, e.getMessage()))
         );
     }
 
 
     @Override
-    public Mono<PageLoanApplicationModel<LoanApplicationModel>> findLoanApplicationsByStates(int page, int size, List<String> states) {
-        Flux<LoanApplicationModel> rows = loanApplicationRepositoryCustom.findByStatesPaged(states, page, size);
-        Mono<Long> totalMono = loanApplicationRepositoryCustom.countByStates(states);
-
-        return rows
-                .collectList()
-                .zipWith(totalMono)
-                .map(tuple -> {
-                    List<LoanApplicationModel> content = tuple.getT1();
-                    long total = tuple.getT2();
-                    int totalPages = (int) Math.ceil((double) total / size);
-                    return new PageLoanApplicationModel<>(content, page, size, totalPages, total);
-                });
+    public Mono<StateModel> findStateByName(String name) {
+        return r2dbcSafeExecutor.executeMono(() ->
+                stateRepository.findByName(name)
+                        .doOnSubscribe(sub -> log.info("Checking existence of name: {}", name))
+                        .map(stateMapperR2dbc::toModelState)
+                        .doOnSuccess(found -> log.info("The name does exist: {}", found))
+                        .doOnError(e -> log.error("Error checking if the state exists by name {}: {}", name, e.getMessage()))
+        );
     }
 }
