@@ -20,8 +20,8 @@ public class SwaggerConfig {
                                 .bearerFormat("JWT")))
                 .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
                 .info(new Info()
-                        .title("Loan Application Microservices")
-                        .description("Documentation about loan application microservices")
+                        .title("CrediYa Solicitudes Microservices")
+                        .description("Documentation about crediya solicitudes microservices")
                         .version("1.0.0"));
     }
 }
