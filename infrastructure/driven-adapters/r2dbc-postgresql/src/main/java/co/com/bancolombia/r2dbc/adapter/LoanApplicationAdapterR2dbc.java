@@ -81,4 +81,15 @@ public class LoanApplicationAdapterR2dbc implements LoanApplicationPersistencePo
                     return new PageLoanApplicationModel<>(content, page, size, totalPages, total);
                 });
     }
+
+
+    @Override
+    public Flux<LoanApplicationModel> findApprovedLoansByEmail(String emailUser) {
+        return  r2dbcSafeExecutor.executeFlux(() ->
+                loanApplicationRepository.findApprovedLoansByEmail(emailUser)
+                        .doOnSubscribe(sub -> log.info("Finding loan application approved with email user"))
+                        .map(loanApplicationMapperR2dbc::toModelLoanApplication)
+                        .doOnError(e -> log.error("Error finding loan application approved by email user: {}", e.getMessage()))
+        );
+    }
 }
